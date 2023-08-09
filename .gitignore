@@ -1,0 +1,14 @@
+.cache
+.clangd
+.conanbuild
+.current_build
+.idea
+CMakeLists.txt.user
+Session.vim
+build
+cmake-build-debug
+clion-build
+compile_commands.json
+dist
+graph_info.json
+tags
