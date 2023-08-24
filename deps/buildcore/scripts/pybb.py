@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 #
-#  Copyright 2016 - 2023 gary@drinkingtea.net
+#  Copyright 2016 - 2021 gary@drinkingtea.net
 #
 #  This Source Code Form is subject to the terms of the Mozilla Public
 #  License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -26,7 +26,10 @@ def mkdir(path: str):
 
 # this exists because Windows is utterly incapable of providing a proper rm -rf
 def rm(path: str):
-    if (os.path.exists(path) or os.path.islink(path)) and not os.path.isdir(path):
+    file_exists = os.path.exists(path)
+    is_link = os.path.islink(path)
+    is_dir = os.path.isdir(path)
+    if (file_exists or is_link) and not is_dir:
         os.remove(path)
     elif os.path.isdir(path):
         shutil.rmtree(path)
@@ -70,16 +73,13 @@ def conan() -> int:
     err = 0
     try:
         mkdir(conan_dir)
-    except:
+    except Exception:
         return 1
     if err != 0:
         return err
     args = ['conan', 'install', '../', '--build=missing', '-pr', project_name]
     os.chdir(conan_dir)
-    err = subprocess.run(args).returncode
-    if err != 0:
-        return err
-    return 0
+    return subprocess.run(args).returncode
 
 
 def cat(paths: List[str]) -> int:
@@ -89,10 +89,19 @@ def cat(paths: List[str]) -> int:
                 data = f.read()
                 sys.stdout.write(data)
         except FileNotFoundError:
-            sys.stderr.write('cat: {}: no such file or directory\n'.format(path))
+            sys.stderr.write(f'cat: {path}: no such file or directory\n')
             return 1
     sys.stdout.write('\n')
     return 0
+
+
+def debug(paths: List[str]) -> int:
+    if shutil.which('gdb') is not None:
+        args = ['gdb', '--args']
+    elif shutil.which('lldb') is not None:
+        args = ['lldb', '--']
+    args.extend(paths)
+    return subprocess.run(args).returncode
 
 
 def get_env(var_name: str) -> int:
@@ -107,12 +116,16 @@ def hostname() -> int:
     return 0
 
 
+def clarg(idx: int) -> Optional[str]:
+    return sys.argv[idx] if len(sys.argv) > idx else None
+
+
 def main() -> int:
     err = 0
     if sys.argv[1] == 'mkdir':
         try:
             mkdir(sys.argv[2])
-        except:
+        except Exception:
             err = 1
     elif sys.argv[1] == 'rm':
         for i in range(2, len(sys.argv)):
@@ -122,9 +135,11 @@ def main() -> int:
     elif sys.argv[1] == 'ctest-all':
         err = ctest_all()
     elif sys.argv[1] == 'cmake-build':
-        err = cmake_build(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+        err = cmake_build(sys.argv[2], clarg(3))
     elif sys.argv[1] == 'cat':
         err = cat(sys.argv[2:])
+    elif sys.argv[1] == 'debug':
+        err = debug(sys.argv[2:])
     elif sys.argv[1] == 'getenv':
         err = get_env(sys.argv[2])
     elif sys.argv[1] == 'hostname':

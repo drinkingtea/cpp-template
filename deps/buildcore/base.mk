@@ -9,90 +9,86 @@
 ifeq (${OS},Windows_NT)
 	SHELL := powershell.exe
 	.SHELLFLAGS := -NoProfile -Command
-	OS=windows
-	HOST_ENV=${OS}
+	BC_OS=windows
+	BC_HOST_ENV=${BC_OS}
 else
-	OS=$(shell uname | tr [:upper:] [:lower:])
-	HOST_ENV=${OS}-$(shell uname -m)
+	BC_OS=$(shell uname | tr [:upper:] [:lower:])
+	BC_HOST_ENV=${BC_OS}-$(shell uname -m)
 endif
 
-DEVENV=devenv$(shell pwd | sed 's/\//-/g')
-DEVENV_IMAGE=${PROJECT_NAME}-devenv
-ifneq ($(shell which docker 2> /dev/null),)
-	ifeq ($(shell docker inspect --format="{{.State.Status}}" ${DEVENV} 2>&1),running)
-		ENV_RUN=docker exec -i -t --user $(shell id -u ${USER}) ${DEVENV}
+ifdef BC_USE_DOCKER_DEVENV
+	ifneq ($(shell which docker 2> /dev/null),)
+		BC_DEVENV=devenv$(shell pwd | sed 's/\//-/g')
+		BC_DEVENV_IMAGE=${BC_PROJECT_NAME}-devenv
+		ifeq ($(shell docker inspect --format="{{.State.Status}}" ${BC_DEVENV} 2>&1),running)
+			BC_ENVRUN=docker exec -i -t --user $(shell id -u ${USER}) ${BC_DEVENV}
+		endif
 	endif
 endif
 
-ifneq ($(shell ${ENV_RUN} which python3 2> /dev/null),)
-	PYTHON3=python3
+ifneq ($(shell ${BC_ENVRUN} which python3 2> /dev/null),)
+	BC_PY3=${BC_ENVRUN} python3
 else
-	ifeq ($(shell ${ENV_RUN} python -c 'import sys; print(sys.version_info[0])'),3)
-		PYTHON3=python
+	ifeq ($(shell ${BC_ENVRUN} python -c 'import sys; print(sys.version_info[0])'),3)
+		BC_PY3=python
+	else
+		echo 'Please install Python3'
+		exit 1
 	endif
 endif
 
-SCRIPTS=${BUILDCORE_PATH}/scripts
-SETUP_BUILD=${PYTHON3} ${SCRIPTS}/setup-build.py
-PYBB=${PYTHON3} ${SCRIPTS}/pybb.py
-CMAKE_BUILD=${PYBB} cmake-build
-GET_ENV=${PYBB} getenv
-CTEST=${PYBB} ctest-all
-RM_RF=${PYBB} rm
-HOST=$(shell ${PYBB} hostname)
-BUILDCORE_HOST_SPECIFIC_BUILDPATH=$(shell ${GET_ENV} BUILDCORE_HOST_SPECIFIC_BUILDPATH)
-ifneq (${BUILDCORE_HOST_SPECIFIC_BUILDPATH},)
-BUILD_PATH=build/${HOST}
-else
-BUILD_PATH=build
-endif
-ifdef USE_VCPKG
-	ifndef VCPKG_DIR_BASE
-		VCPKG_DIR_BASE=.vcpkg
+BC_SCRIPTS=${BUILDCORE_PATH}/scripts
+BC_SETUP_BUILD=${BC_PY3} ${BC_SCRIPTS}/setup-build.py
+BC_PYBB=${BC_PY3} ${BC_SCRIPTS}/pybb.py
+BC_CMAKE_BUILD=${BC_PYBB} cmake-build
+BC_GETENV=${BC_PYBB} getenv
+BC_CTEST=${BC_PYBB} ctest-all
+BC_RM_RF=${BC_PYBB} rm
+BC_CAT=${BC_PYBB} cat
+BC_BUILD_PATH=build
+ifdef BC_USE_VCPKG
+	ifndef BC_VCPKG_DIR_BASE
+		BC_VCPKG_DIR_BASE=.vcpkg
 	endif
-	ifndef VCPKG_VERSION
-		VCPKG_VERSION=2020.06
+	ifndef BC_VCPKG_VERSION
+		BC_VCPKG_VERSION=2023.08.09
 	endif
-	VCPKG_TOOLCHAIN=--toolchain=${VCPKG_DIR}/scripts/buildsystems/vcpkg.cmake
+	BC_VCPKG_TOOLCHAIN=--toolchain=${BC_VCPKG_DIR}/scripts/buildsystems/vcpkg.cmake
 endif
-ifeq ($(OS),darwin)
-	DEBUGGER=lldb --
-else
-	DEBUGGER=gdb --args
-endif
+BC_DEBUGGER=${BC_PYBB} debug
 
-VCPKG_DIR=$(VCPKG_DIR_BASE)/$(VCPKG_VERSION)-$(HOST_ENV)
-CURRENT_BUILD=$(HOST_ENV)-$(shell ${ENV_RUN} ${PYBB} cat .current_build)
+BC_VCPKG_DIR=$(BC_VCPKG_DIR_BASE)/$(BC_VCPKG_VERSION)-$(BC_HOST_ENV)
+BC_CURRENT_BUILD=$(BC_HOST_ENV)-$(shell ${BC_ENVRUN} ${BC_CAT} .current_build)
 
 .PHONY: build
 build:
-	${ENV_RUN} ${CMAKE_BUILD} ${BUILD_PATH}
+	${BC_ENVRUN} ${BC_CMAKE_BUILD} ${BC_BUILD_PATH}
 .PHONY: install
 install:
-	${ENV_RUN} ${CMAKE_BUILD} ${BUILD_PATH} install
+	${BC_ENVRUN} ${BC_CMAKE_BUILD} ${BC_BUILD_PATH} install
 .PHONY: clean
 clean:
-	${ENV_RUN} ${CMAKE_BUILD} ${BUILD_PATH} clean
+	${BC_ENVRUN} ${BC_CMAKE_BUILD} ${BC_BUILD_PATH} clean
 .PHONY: purge
 purge:
-	${ENV_RUN} ${RM_RF} .current_build
-	${ENV_RUN} ${RM_RF} ${BUILD_PATH}
-	${ENV_RUN} ${RM_RF} dist
-	${ENV_RUN} ${RM_RF} compile_commands.json
+	${BC_ENVRUN} ${BC_RM_RF} .current_build
+	${BC_ENVRUN} ${BC_RM_RF} ${BC_BUILD_PATH}
+	${BC_ENVRUN} ${BC_RM_RF} dist
+	${BC_ENVRUN} ${BC_RM_RF} compile_commands.json
 .PHONY: test
 test: build
-	${ENV_RUN} mypy ${SCRIPTS}
-	${ENV_RUN} ${CMAKE_BUILD} ${BUILD_PATH} test
+	${BC_ENVRUN} mypy ${BC_SCRIPTS}
+	${BC_ENVRUN} ${BC_CMAKE_BUILD} ${BC_BUILD_PATH} test
 .PHONY: test-verbose
 test-verbose: build
-	${ENV_RUN} ${CTEST} ${BUILD_PATH} --output-on-failure
+	${BC_ENVRUN} ${BC_CTEST} ${BC_BUILD_PATH} --output-on-failure
 .PHONY: test-rerun-verbose
 test-rerun-verbose: build
-	${ENV_RUN} ${CTEST} ${BUILD_PATH} --rerun-failed --output-on-failure
+	${BC_ENVRUN} ${BC_CTEST} ${BC_BUILD_PATH} --rerun-failed --output-on-failure
 
 .PHONY: devenv-image
 devenv-image:
-	docker build . -t ${DEVENV_IMAGE}
+	docker build . -t ${BC_DEVENV_IMAGE}
 .PHONY: devenv-create
 devenv-create:
 	docker run -d \
@@ -104,65 +100,73 @@ devenv-create:
 		-v $(shell pwd):/usr/src/project \
 		-v /dev/shm:/dev/shm \
 		--restart=always \
-		--name ${DEVENV} \
-		-t ${DEVENV_IMAGE} bash
+		--name ${BC_DEVENV} \
+		-t ${BC_DEVENV_IMAGE} bash
 .PHONY: devenv-destroy
 devenv-destroy:
-	docker rm -f ${DEVENV}
-ifdef ENV_RUN
+	docker rm -f ${BC_DEVENV}
+ifdef BC_ENVRUN
 .PHONY: devenv-shell
 devenv-shell:
-	${ENV_RUN} bash
+	${BC_ENVRUN} bash
 endif
 
-ifdef USE_VCPKG
+ifdef BC_USE_VCPKG
 
 .PHONY: vcpkg
-vcpkg: ${VCPKG_DIR} vcpkg-install
+vcpkg: ${BC_VCPKG_DIR} vcpkg-install
 
-${VCPKG_DIR}:
-	${ENV_RUN} ${RM_RF} ${VCPKG_DIR}
-	${ENV_RUN} mkdir -p ${VCPKG_DIR_BASE}
-	${ENV_RUN} git clone -b release --depth 1 --branch ${VCPKG_VERSION} https://github.com/microsoft/vcpkg.git ${VCPKG_DIR}
-ifneq (${OS},windows)
-	${ENV_RUN} ${VCPKG_DIR}/bootstrap-vcpkg.sh
+${BC_VCPKG_DIR}:
+	${BC_ENVRUN} ${BC_RM_RF} ${BC_VCPKG_DIR}
+	${BC_ENVRUN} mkdir -p ${BC_VCPKG_DIR_BASE}
+	${BC_ENVRUN} git clone -b release --depth 1 --branch ${BC_VCPKG_VERSION} https://github.com/microsoft/vcpkg.git ${BC_VCPKG_DIR}
+ifneq (${BC_OS},windows)
+	${BC_ENVRUN} ${BC_VCPKG_DIR}/bootstrap-vcpkg.sh
 else
-	${ENV_RUN} ${VCPKG_DIR}/bootstrap-vcpkg.bat
+	${BC_ENVRUN} ${BC_VCPKG_DIR}/bootstrap-vcpkg.bat
 endif
 
 .PHONY: vcpkg-install
 vcpkg-install:
-ifneq (${OS},windows)
-	${VCPKG_DIR}/vcpkg install ${VCPKG_PKGS}
+ifneq (${BC_OS},windows)
+	${BC_ENVRUN} ${BC_VCPKG_DIR}/vcpkg install ${BC_VCPKG_PKGS}
 else
-	${VCPKG_DIR}/vcpkg install --triplet x64-windows ${VCPKG_PKGS}
+	${BC_ENVRUN} ${BC_VCPKG_DIR}/vcpkg install --triplet x64-windows ${BC_VCPKG_PKGS}
 endif
 
-else ifdef USE_CONAN # USE_VCPKG ################################################
+else ifdef USE_CONAN # USE_CONAN ################################################
 
 .PHONY: setup-conan
 conan-config:
-	${ENV_RUN} conan profile detect -f --name ${PROJECT_NAME}
+	${BC_ENVRUN} conan profile new ${BC_PROJECT_NAME} --detect --force
+ifeq ($(BC_OS),linux)
+	${BC_ENVRUN} conan profile update settings.compiler.libcxx=libstdc++11 ${BC_PROJECT_NAME}
+else
+	${BC_ENVRUN} conan profile update settings.compiler.cppstd=20 ${BC_PROJECT_NAME}
+ifeq ($(BC_OS),windows)
+	${BC_ENVRUN} conan profile update settings.compiler.runtime=static ${BC_PROJECT_NAME}
+endif
+endif
 .PHONY: conan
 conan:
-	${ENV_RUN} ${PYBB} conan-install ${PROJECT_NAME}
-endif # USE_VCPKG ###############################################
+	${BC_ENVRUN} ${BC_PYBB} conan-install ${BC_PROJECT_NAME}
+endif # USE_CONAN ###############################################
 
-ifeq (${OS},darwin)
+ifeq (${BC_OS},darwin)
 .PHONY: configure-xcode
 configure-xcode:
-	${ENV_RUN} ${SETUP_BUILD} ${VCPKG_TOOLCHAIN} --build_tool=xcode --current_build=0 --build_root=${BUILD_PATH}
+	${BC_ENVRUN} ${BC_SETUP_BUILD} ${BC_VCPKG_TOOLCHAIN} --build_tool=xcode --current_build=0 --build_root=${BC_BUILD_PATH}
 endif
 
 .PHONY: configure-release
 configure-release:
-	${ENV_RUN} ${SETUP_BUILD} ${VCPKG_TOOLCHAIN} --build_type=release --build_root=${BUILD_PATH}
+	${BC_ENVRUN} ${BC_SETUP_BUILD} ${BC_VCPKG_TOOLCHAIN} --build_type=release --build_root=${BC_BUILD_PATH}
 
 .PHONY: configure-debug
 configure-debug:
-	${ENV_RUN} ${SETUP_BUILD} ${VCPKG_TOOLCHAIN} --build_type=debug --build_root=${BUILD_PATH}
+	${BC_ENVRUN} ${BC_SETUP_BUILD} ${BC_VCPKG_TOOLCHAIN} --build_type=debug --build_root=${BC_BUILD_PATH}
 
 .PHONY: configure-asan
 configure-asan:
-	${ENV_RUN} ${SETUP_BUILD} ${VCPKG_TOOLCHAIN} --build_type=asan --build_root=${BUILD_PATH}
+	${BC_ENVRUN} ${BC_SETUP_BUILD} ${BC_VCPKG_TOOLCHAIN} --build_type=asan --build_root=${BC_BUILD_PATH}
 
