@@ -18,21 +18,20 @@ import subprocess
 import sys
 from typing import List, Optional
 
-
-def mkdir(path: str):
-    if not os.path.exists(path):
-        os.mkdir(path)
+import util
 
 
-# this exists because Windows is utterly incapable of providing a proper rm -rf
-def rm(path: str):
-    file_exists = os.path.exists(path)
-    is_link = os.path.islink(path)
-    is_dir = os.path.isdir(path)
-    if (file_exists or is_link) and not is_dir:
-        os.remove(path)
-    elif os.path.isdir(path):
-        shutil.rmtree(path)
+def mkdir(path: str) -> int:
+    try:
+        util.mkdir_p(path)
+    except Exception:
+        return 1
+    return 0
+
+
+def rm_multi(paths: List[str]):
+    for path in paths:
+        util.rm(path)
 
 
 def ctest_all() -> int:
@@ -87,11 +86,10 @@ def cat(paths: List[str]) -> int:
         try:
             with open(path) as f:
                 data = f.read()
-                sys.stdout.write(data)
+                print(data)
         except FileNotFoundError:
             sys.stderr.write(f'cat: {path}: no such file or directory\n')
             return 1
-    sys.stdout.write('\n')
     return 0
 
 
@@ -107,12 +105,21 @@ def debug(paths: List[str]) -> int:
 def get_env(var_name: str) -> int:
     if var_name not in os.environ:
         return 1
-    sys.stdout.write(os.environ[var_name])
+    print(os.environ[var_name])
     return 0
 
 
 def hostname() -> int:
-    sys.stdout.write(platform.node())
+    print(platform.node())
+    return 0
+
+
+def host_env() -> int:
+    os_name = os.uname().sysname.lower()
+    arch = platform.machine()
+    if arch == 'amd64':
+        arch = 'x86_64'
+    print(f'{os_name}-{arch}')
     return 0
 
 
@@ -123,13 +130,9 @@ def clarg(idx: int) -> Optional[str]:
 def main() -> int:
     err = 0
     if sys.argv[1] == 'mkdir':
-        try:
-            mkdir(sys.argv[2])
-        except Exception:
-            err = 1
+        err = mkdir(sys.argv[2])
     elif sys.argv[1] == 'rm':
-        for i in range(2, len(sys.argv)):
-            rm(sys.argv[i])
+        rm_multi(sys.argv[2:])
     elif sys.argv[1] == 'conan-install':
         err = conan()
     elif sys.argv[1] == 'ctest-all':
@@ -144,6 +147,8 @@ def main() -> int:
         err = get_env(sys.argv[2])
     elif sys.argv[1] == 'hostname':
         err = hostname()
+    elif sys.argv[1] == 'hostenv':
+        err = host_env()
     else:
         sys.stderr.write('Command not found\n')
         err = 1

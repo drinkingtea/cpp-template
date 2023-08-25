@@ -15,19 +15,35 @@ import shutil
 import subprocess
 import sys
 
-from pybb import mkdir, rm
+import util
 
-os_name = os.uname().sysname.lower()
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--target', help='Platform target',
-                        default='{:s}-{:s}'.format(os_name, platform.machine()))
-    parser.add_argument('--build_type', help='Build type (asan,debug,release)', default='release')
-    parser.add_argument('--build_tool', help='Build tool (default,xcode)', default='')
-    parser.add_argument('--build_root', help='Path to the root of build directories (must be in project dir)', default='build')
-    parser.add_argument('--toolchain', help='Path to CMake toolchain file', default='')
-    parser.add_argument('--current_build', help='Indicates whether or not to make this the active build', default=1)
+    parser.add_argument(
+            '--target',
+            help='Platform target',
+            default=f'{util.get_os()}-{util.get_arch()}')
+    parser.add_argument(
+            '--build_type',
+            help='Build type (asan,debug,release)',
+            default='release')
+    parser.add_argument(
+            '--build_tool',
+            help='Build tool (default,xcode)',
+            default='')
+    parser.add_argument(
+            '--build_root',
+            help='Path to the root build directory (must be in project dir)',
+            default='build')
+    parser.add_argument(
+            '--toolchain',
+            help='Path to CMake toolchain file',
+            default='')
+    parser.add_argument(
+            '--current_build',
+            help='Indicates whether or not to make this the active build',
+            default=1)
     args = parser.parse_args()
 
     if args.build_type == 'asan':
@@ -65,8 +81,8 @@ def main() -> int:
         return 1
 
     project_dir = os.getcwd()
-    build_dir = '{:s}/{:s}/{:s}'.format(project_dir, args.build_root, build_config)
-    rm(build_dir)
+    build_dir = f'{project_dir}/{args.build_root}/{build_config}'
+    util.rm(build_dir)
     cmake_cmd = [
         'cmake', '-S', project_dir, '-B', build_dir, build_tool,
         '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
@@ -83,15 +99,16 @@ def main() -> int:
 
     subprocess.run(cmake_cmd)
 
-    mkdir('dist')
+    util.mkdir_p('dist')
     if int(args.current_build) != 0:
         cb = open('.current_build', 'w')
         cb.write(args.build_type)
         cb.close()
 
-    rm('compile_commands.json')
+    util.rm('compile_commands.json')
     if platform.system() != 'Windows':
-        os.symlink('{:s}/compile_commands.json'.format(build_dir), 'compile_commands.json')
+        os.symlink(f'{build_dir}/compile_commands.json',
+                   'compile_commands.json')
     return 0
 
 
